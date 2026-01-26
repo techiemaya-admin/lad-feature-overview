@@ -138,7 +138,12 @@ class LeadBookingRepository {
 
     values.push(limit);
 
+    // Debug: Log the actual query
+    logger.debug('[LeadBookingRepository] Final SQL:', query);
+    logger.debug('[LeadBookingRepository] Query values:', values);
+
     const result = await this.pool.query(query, values);
+    logger.debug('[LeadBookingRepository] Result count:', result.rows.length);
     return result.rows;
   }
 

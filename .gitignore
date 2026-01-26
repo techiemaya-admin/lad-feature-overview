@@ -1,0 +1,70 @@
+# Node modules
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Package files (main LAD repo already has these)
+package.json
+package-lock.json
+yarn.lock
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+logs/
+*.log
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# Build outputs
+dist/
+build/
+
+# Documentation (main repo has centralized docs)
+*.md
+
+# Test endpoints (local development only - remove before merge)
+test-endpoints/
+
+# Mock/adapter utilities (LAD core has real implementations)
+core/
+
+# Temporary test files
+check-data.js
+test-*.js
+*.test.js
+__tests__/
+
+# Standalone development server (not needed in main repo)
+server.js
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Database dumps
+*.sql
+*.dump

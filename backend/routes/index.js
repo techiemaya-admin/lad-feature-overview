@@ -17,10 +17,10 @@ const jwtAuth = (req, res, next) => {
   // In dev mode, accept any token and provide full tenant context
   const token = authHeader.substring(7);
   
-  // Extract tenant from header (X-Tenant-Id) or use hardcoded for dev
+  // Extract tenant from header (X-Tenant-Id) - required
   const tenantIdFromHeader = req.headers['x-tenant-id'] || req.headers['x-tenantid'];
   
-  const tenantId = tenantIdFromHeader || '926070b5-189b-4682-9279-ea10ca090b84';
+  const tenantId = tenantIdFromHeader;
   
   // Validate tenant_id is present - MANDATORY
   if (!tenantId) {

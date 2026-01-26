@@ -1,0 +1,164 @@
+name: PR Validation - lad-feature-overview
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+jobs:
+  validate:
+    name: Validate PR
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check for required files
+        run: |
+          echo "Checking required files for lad-feature-overview..."
+          test -f backend/manifest.js || (echo "❌ backend/manifest.js is required" && exit 1)
+          test -d backend/controllers || (echo "❌ backend/controllers directory is required" && exit 1)
+          test -d backend/routes || (echo "❌ backend/routes directory is required" && exit 1)
+          echo "✅ All required files present"
+
+      - name: Validate backend structure
+        run: |
+          echo "Validating backend structure..."
+          files=(
+            "backend/controllers/VoiceAgentController.js"
+            "backend/controllers/LeadBookingController.js"
+            "backend/routes/index.js"
+            "backend/services/CallLoggingService.js"
+            "backend/middleware/validation.js"
+          )
+          for file in "${files[@]}"; do
+            if [ -f "$file" ]; then
+              echo "✅ $file exists"
+            else
+              echo "⚠️  $file not found (may be optional)"
+            fi
+          done
+
+      - name: Check code syntax
+        run: |
+          echo "Checking JavaScript syntax..."
+          find backend -name "*.js" -type f -exec node --check {} \;
+          echo "✅ All JavaScript files have valid syntax"
+
+      - name: Check for secrets
+        run: |
+          echo "Checking for accidentally committed secrets..."
+          if grep -r -i "api[_-]key.*=.*['\"][a-zA-Z0-9]{20,}['\"]" backend/ frontend/ 2>/dev/null; then
+            echo "❌ Possible API keys found in code"
+            exit 1
+          fi
+          if grep -r -i "password.*=.*['\"][^'\"]*['\"]" backend/ frontend/ 2>/dev/null | grep -v "password.*process.env"; then
+            echo "❌ Possible hardcoded passwords found"
+            exit 1
+          fi
+          echo "✅ No obvious secrets detected"
+
+      - name: Test server startup
+        run: |
+          echo "Testing if server can start..."
+          # Minimal env for validation
+          echo "NODE_ENV=test" > .env || true
+          if [ -f test-server.js ]; then
+            timeout 10 node test-server.js &
+            SERVER_PID=$!
+            sleep 5
+            if ps -p $SERVER_PID > /dev/null; then
+              echo "✅ Server started successfully"
+              kill $SERVER_PID 2>/dev/null || true
+            else
+              echo "⚠️  Server did not remain running (may require feature dependencies)"
+            fi
+          else
+            echo "⚠️  No test-server.js present"
+          fi
+
+      - name: Generate PR summary
+        if: always()
+        run: |
+          echo "## PR Validation Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Files Changed" >> $GITHUB_STEP_SUMMARY
+          echo "```" >> $GITHUB_STEP_SUMMARY
+          git diff --name-status origin/main..HEAD >> $GITHUB_STEP_SUMMARY
+          echo "```" >> $GITHUB_STEP_SUMMARY
+
+  label-pr:
+    name: Auto-label PR
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Label based on changes
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: files } = await github.rest.pulls.listFiles({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+            });
+
+            const labels = new Set();
+            for (const file of files) {
+              if (file.filename.startsWith('backend/')) labels.add('backend');
+              if (file.filename.startsWith('frontend/')) labels.add('frontend');
+              if (file.filename.startsWith('migrations/')) labels.add('database');
+              if (file.filename.includes('test')) labels.add('testing');
+              if (file.filename.endsWith('.md')) labels.add('documentation');
+            }
+            const additions = files.reduce((sum, file) => sum + file.additions, 0);
+            if (additions < 10) labels.add('size/XS');
+            else if (additions < 50) labels.add('size/S');
+            else if (additions < 200) labels.add('size/M');
+            else if (additions < 500) labels.add('size/L');
+            else labels.add('size/XL');
+            if (labels.size > 0) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                labels: Array.from(labels),
+              });
+            }
+
+  security-check:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run npm audit
+        run: |
+          npm audit --audit-level=moderate || echo "⚠️  Security vulnerabilities found, please review"
+        continue-on-error: true

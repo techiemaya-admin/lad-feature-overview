@@ -1,0 +1,152 @@
+name: Sync to LAD Main Repositories
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout feature repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Git credentials
+        run: |
+          git config --global user.name "GitHub Actions Bot"
+          git config --global user.email "actions@github.com"
+
+      - name: Verify LAD_REPO_TOKEN
+        run: |
+          if [ -z "${{ secrets.LAD_REPO_TOKEN }}" ]; then
+            echo "❌ LAD_REPO_TOKEN secret is not set!"
+            exit 1
+          fi
+          echo "✅ LAD_REPO_TOKEN is configured"
+
+      - name: Determine feature key
+        id: featurekey
+        run: |
+          if [ -f backend/manifest.js ]; then
+            KEY=$(node -e "const m=require('./backend/manifest.js'); console.log(m && (m.id||m.key||'feature'))")
+            echo "feature_key=$KEY" >> $GITHUB_OUTPUT
+            echo "Detected feature key: $KEY"
+          else
+            echo "feature_key=feature" >> $GITHUB_OUTPUT
+            echo "No backend/manifest.js found; using 'feature'"
+          fi
+
+      - name: Checkout LAD-Backend
+        env:
+          GH_TOKEN: ${{ secrets.LAD_REPO_TOKEN }}
+        run: |
+          echo "📥 Cloning LAD-Backend repository..."
+          git clone --depth=1 --branch=develop "https://oauth2:${GH_TOKEN}@github.com/techiemaya-admin/LAD-Backend.git" lad-backend
+          cd lad-backend
+          git config user.name "GitHub Actions Bot"
+          git config user.email "actions@github.com"
+          echo "✅ LAD-Backend cloned successfully"
+
+      - name: Sync backend files to LAD-Backend
+        run: |
+          SRC=backend
+          KEY=${{ steps.featurekey.outputs.feature_key }}
+          DEST=lad-backend/features/${KEY}
+
+          if [ ! -d "$SRC" ]; then
+            echo "❌ Source backend directory not found: $SRC"
+            exit 1
+          fi
+
+          mkdir -p "$DEST"
+
+          if ! rsync -av --exclude='.env*' --exclude='*.local.js' --exclude='node_modules/' --exclude='.DS_Store' "$SRC/" "$DEST/"; then
+            echo "❌ rsync failed!"
+            exit 1
+          fi
+
+          echo "✅ Backend files synced to $DEST"
+
+      - name: Verify critical backend files
+        run: |
+          KEY=${{ steps.featurekey.outputs.feature_key }}
+          CRITICAL=(
+            "lad-backend/features/${KEY}/manifest.js"
+            "lad-backend/features/${KEY}/routes/index.js"
+          )
+          MISSING=0
+          for f in "${CRITICAL[@]}"; do
+            if [ ! -f "$f" ]; then
+              echo "❌ CRITICAL: $f is missing!"
+              MISSING=1
+            else
+              echo "✅ $f exists"
+            fi
+          done
+          if [ $MISSING -eq 1 ]; then
+            echo "❌ Sync validation failed - critical files missing"
+            exit 1
+          fi
+
+      - name: Commit and push backend changes
+        working-directory: lad-backend
+        run: |
+          KEY=${{ steps.featurekey.outputs.feature_key }}
+          git add features/${KEY}/
+          if git diff --staged --quiet; then
+            echo "ℹ️ No backend changes to commit"
+          else
+            git commit -m "feat(${KEY}): auto-sync from feature repo" -m "Synced from: ${{ github.repository }}@${{ github.sha }}"
+            git push origin develop || (
+              echo "⚠️ Push failed, attempting merge resolution" && git pull origin develop --no-rebase || true && git push origin develop
+            )
+          fi
+
+      - name: Checkout LAD-Frontend
+        env:
+          GH_TOKEN: ${{ secrets.LAD_REPO_TOKEN }}
+        run: |
+          echo "📥 Cloning LAD-Frontend repository..."
+          git clone --depth=1 --branch=develop "https://oauth2:${GH_TOKEN}@github.com/techiemaya-admin/LAD-Frontend.git" lad-frontend
+          cd lad-frontend
+          git config user.name "GitHub Actions Bot"
+          git config user.email "actions@github.com"
+          echo "✅ LAD-Frontend cloned successfully"
+
+      - name: Sync frontend SDK(s) to LAD-Frontend
+        run: |
+          SDK_SRC=frontend/sdk/features
+          if [ ! -d "$SDK_SRC" ]; then
+            echo "ℹ️ No frontend SDK directory found, skipping frontend sync"
+            exit 0
+          fi
+
+          for dir in "$SDK_SRC"/*; do
+            if [ -d "$dir" ]; then
+              name=$(basename "$dir")
+              DEST=lad-frontend/sdk/features/${name}
+              mkdir -p "$DEST"
+              rsync -av --exclude='node_modules/' --exclude='.DS_Store' "$dir/" "$DEST/"
+              echo "✅ Synced SDK: $name"
+            fi
+          done
+
+      - name: Commit and push frontend changes
+        working-directory: lad-frontend
+        run: |
+          git add sdk/features/
+          if git diff --staged --quiet; then
+            echo "ℹ️ No frontend changes to commit"
+          else
+            git commit -m "feat(sdk): auto-sync frontend SDK from feature repo" -m "Synced from: ${{ github.repository }}@${{ github.sha }}"
+            git push origin develop || (git pull origin develop --no-rebase || true && git push origin develop)
+          fi
+
+      - name: Notify result
+        if: always()
+        run: |
+          echo "Sync finished"
