@@ -3,7 +3,13 @@
  * Handles database queries for lead bookings
  */
 
-const logger = require('../../../core/utils/logger');
+let logger;
+try {
+  logger = require('../../../core/utils/logger');
+} catch (e) {
+  const loggerAdapter = require('../utils/logger');
+  logger = loggerAdapter.getLogger();
+}
 
 class LeadBookingRepository {
   constructor(db) {
@@ -32,7 +38,7 @@ class LeadBookingRepository {
     filters = {},
     limit = 50
   ) {
-    const whereClauses = ['tenant_id = $1'];
+    const whereClauses = ['lb.tenant_id = $1'];
     const values = [tenantId];
     let paramIndex = 2;
 
@@ -43,13 +49,13 @@ class LeadBookingRepository {
     if ((userRole === 'owner' || userRole === 'admin') && filters.user_id) {
       // Owner/Admin explicitly selected another user's bookings by user_id
       logger.debug('[LeadBookingRepository] Filtering by user_id:', filters.user_id);
-      whereClauses.push(`assigned_user_id = $${paramIndex}`);
+      whereClauses.push(`lb.assigned_user_id = $${paramIndex}`);
       values.push(filters.user_id);
       paramIndex++;
     } else {
       // Owner/Admin without user_id OR regular users - show own bookings
       logger.debug('[LeadBookingRepository] Filtering by own userId:', userId);
-      whereClauses.push(`assigned_user_id = $${paramIndex}`);
+      whereClauses.push(`lb.assigned_user_id = $${paramIndex}`);
       values.push(userId);
       paramIndex++;
     }
@@ -99,51 +105,54 @@ class LeadBookingRepository {
 
     // Exclude deleted records by default
     if (filters.includeDeleted !== true) {
-      whereClauses.push('is_deleted = false');
+      whereClauses.push('lb.is_deleted = false');
     }
 
+
+    // Join with leads and users tables for lead_name and assigned_user_name
     const query = `
       SELECT 
-        id,
-        tenant_id,
-        lead_id,
-        assigned_user_id,
-        booking_type,
-        booking_source,
-        scheduled_at,
-        timezone,
-        status,
-        call_result,
-        retry_count,
-        parent_booking_id,
-        notes,
-        metadata,
-        created_by,
-        created_at,
-        updated_at,
-        is_deleted,
-        buffer_until,
-        task_name,
-        task_scheduled_at,
-        task_status,
-        executed_at,
-        execution_attempts,
-        last_execution_error,
-        idempotency_key
-      FROM ${schema}.lead_bookings
+        lb.id,
+        lb.tenant_id,
+        lb.lead_id,
+        lb.assigned_user_id,
+        lb.booking_type,
+        lb.booking_source,
+        lb.scheduled_at,
+        lb.timezone,
+        lb.status,
+        lb.call_result,
+        lb.retry_count,
+        lb.parent_booking_id,
+        lb.notes,
+        lb.metadata,
+        lb.created_by,
+        lb.created_at,
+        lb.updated_at,
+        lb.is_deleted,
+        lb.buffer_until,
+        lb.task_name,
+        lb.task_scheduled_at,
+        lb.task_status,
+        lb.executed_at,
+        lb.execution_attempts,
+        lb.last_execution_error,
+        lb.idempotency_key,
+        -- Lead name
+        CONCAT(l.first_name, ' ', l.last_name) AS lead_name,
+        -- Assigned user name
+        CONCAT(u.first_name, ' ', u.last_name) AS assigned_user_name
+      FROM ${schema}.lead_bookings lb
+      LEFT JOIN ${schema}.leads l ON lb.lead_id = l.id
+      LEFT JOIN ${schema}.users u ON lb.assigned_user_id = u.id
       WHERE ${whereClauses.join(' AND ')}
-      ORDER BY scheduled_at DESC
+      ORDER BY lb.scheduled_at DESC
       LIMIT $${paramIndex}
     `;
 
     values.push(limit);
 
-    // Debug: Log the actual query
-    logger.debug('[LeadBookingRepository] Final SQL:', query);
-    logger.debug('[LeadBookingRepository] Query values:', values);
-
     const result = await this.pool.query(query, values);
-    logger.debug('[LeadBookingRepository] Result count:', result.rows.length);
     return result.rows;
   }
 
