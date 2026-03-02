@@ -5,7 +5,7 @@ yarn-debug.log*
 yarn-error.log*
 
 # Package files (main LAD repo already has these)
-package.json
+# package.json
 # package-lock.json
 yarn.lock
 
