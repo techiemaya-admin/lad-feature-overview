@@ -49,7 +49,7 @@ build/
 test-endpoints/
 
 # Mock/adapter utilities (LAD core has real implementations)
-core/
+# core/
 
 # Temporary test files
 check-data.js
