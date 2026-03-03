@@ -5,7 +5,12 @@
 
 const LeadBookingRepository = require('../repositories/LeadBooking.repository');
 
-const { getSchema } = require('../../../core/utils/schemaHelper');
+let getSchema;
+try {
+  ({ getSchema } = require('../../../core/utils/schemaHelper'));
+} catch (e) {
+  ({ getSchema } = require('../utils/schemaHelper'));
+}
 
 class LeadBookingService {
   constructor(db) {
