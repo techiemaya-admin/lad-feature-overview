@@ -58,7 +58,6 @@ test-*.js
 __tests__/
 
 # Standalone development server (not needed in main repo)
-server.js
 
 # Temporary files
 tmp/
