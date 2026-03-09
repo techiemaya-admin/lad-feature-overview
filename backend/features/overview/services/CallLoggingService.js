@@ -1,6 +1,11 @@
 const { VoiceCallRepository } = require('../repositories');
 
-const { getSchema } = require('../../../core/utils/schemaHelper');
+let getSchema;
+try {
+  ({ getSchema } = require('../../../core/utils/schemaHelper'));
+} catch (e) {
+  ({ getSchema } = require('../utils/schemaHelper'));
+}
 
 class CallLoggingService {
   constructor(db) {
