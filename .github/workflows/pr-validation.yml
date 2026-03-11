@@ -35,6 +35,10 @@ jobs:
           test -f backend/features/overview/manifest.js || (echo "❌ backend/features/overview/manifest.js is required" && exit 1)
           test -d backend/features/overview/services || (echo "❌ backend/features/overview/services directory is required" && exit 1)
           test -d backend/features/overview/routes || (echo "❌ backend/features/overview/routes directory is required" && exit 1)
+          test -d backend/features/overview/controllers || (echo "❌ backend/features/overview/controllers directory is required" && exit 1)
+          test -d backend/features/overview/models || (echo "❌ backend/features/overview/models directory is required" && exit 1)
+          test -d backend/features/overview/repositories || (echo "❌ backend/features/overview/repositories directory is required" && exit 1)
+          test -d backend/features/overview/middleware || (echo "❌ backend/features/overview/middleware directory is required" && exit 1)
           echo "✅ All required files present"
 
       - name: Validate backend structure
@@ -58,10 +62,10 @@ jobs:
           
           # Check optional files
           optional_files=(
-            "backend/services/"
-            "backend/controllers/"
-            "backend/middleware/"
-            "backend/models/"
+            "backend/features/overview/services/"
+            "backend/features/overview/controllers/"
+            "backend/features/overview/middleware/"
+            "backend/features/overview/models/"
           )
           
           for file in "${optional_files[@]}"; do
